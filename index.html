@@ -491,16 +491,17 @@ const notificationTemplates = {
     DetailScale: (data) => {
         return `震源・震度情報: ${data.earthquake.hypocenter.name}
 ${formatTimeShort(data.earthquake.time)} 発生
-深度: ${formatDepth(data.earthquake.hypocenter.depth)}
+深度: ${data.earthquake.hypocenter.depth}km
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
-最大震度: ${formatScale(data.earthquake.maxScale)}`;
+最大震度: ${formatScale(data.earthquake.maxScale)}
+${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
 
     // 震源情報
     Destination: (data) => {
         return `震源情報: ${data.earthquake.hypocenter.name}
 ${formatTimeShort(data.earthquake.time)} 発生
-震源深度: ${formatDepth(data.earthquake.hypocenter.depth)}
+深度: ${data.earthquake.hypocenter.depth}km
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
@@ -524,7 +525,7 @@ ${formatTimeShort(data.earthquake.time)} 発生
         return `遠地地震情報: ${data.earthquake.hypocenter.name}
 ${formatTimeShort(data.earthquake.time)} 発生
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
-震源深度: ${formatDepth(data.earthquake.hypocenter.depth)}
+深度: ${data.earthquake.hypocenter.depth}km
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
 
