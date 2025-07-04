@@ -489,7 +489,7 @@ ${areaText}`;
 const notificationTemplates = {
     // 震源震度情報
     DetailScale: (data) => {
-        return `震源・震度情報: ${data.earthquake.hypocenter.name}
+        return `震源: ${data.earthquake.hypocenter.name}
 ${formatTimeShort(data.earthquake.time)} 発生
 深度: ${data.earthquake.hypocenter.depth}km
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
@@ -499,7 +499,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
 
     // 震源情報
     Destination: (data) => {
-        return `震源情報: ${data.earthquake.hypocenter.name}
+        return `震源: ${data.earthquake.hypocenter.name}
 ${formatTimeShort(data.earthquake.time)} 発生
 深度: ${data.earthquake.hypocenter.depth}km
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
@@ -512,17 +512,16 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
         if (data.points && data.points.length > 0) {
             mainRegion = findRegionByArea(data.points[0].addr);
         }
-        return `震度速報: ${mainRegion}地方
-${formatTimeShort(data.earthquake.time)} 発生
-最大震度: ${formatScale(data.earthquake.maxScale)}`;
+        return `${formatTimeShort(data.earthquake.time)}、 ${mainRegion}地方で強い地震
+最大震度: ${formatScale(data.earthquake.maxScale)}、 今後の情報に注意してください`;
     },
 
     // 遠地情報
     Foreign: (data) => {
         if (isVolcanicEruption(data)) {
-            return `遠地噴火情報: ${data.comments.freeFormComment} `;
+            return `${data.comments.freeFormComment} `;
         }
-        return `遠地地震情報: ${data.earthquake.hypocenter.name}
+        return `震源:${data.earthquake.hypocenter.name}
 ${formatTimeShort(data.earthquake.time)} 発生
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 深度: ${data.earthquake.hypocenter.depth}km
@@ -653,16 +652,23 @@ function sendNotification(data) {
         title = "緊急地震速報 (EEW)";
         body = notificationTemplates.EEW(data);
     } else if (data.code === 551) {
-        if (isVolcanicEruption(data)) {
+        if (isVolcanicEruption(data) && data.issue.type === Foreign) {
             title = "遠地噴火情報";
             body = notificationTemplates.Volcanic(data);
-        } else {
-            title = "地震情報";
+    } else if (data.issue.type === ScalePrompt){
+            title = "震度速報";
             const template = notificationTemplates[data.issue.type] || (d => `情報类型: ${d.issue.type}`);
             body = template(data);
-        }
+    } else if (data.issue.type === DetailScale){
+            title = "震源・震度情報";
+            const template = notificationTemplates[data.issue.type] || (d => `情報类型: ${d.issue.type}`);
+            body = template(data);
+    } else if (data.issue.type === Foreign){
+            title = "遠地地震情報";
+            const template = notificationTemplates[data.issue.type] || (d => `情報类型: ${d.issue.type}`);
+            body = template(data);
     }
-    
+}    
     // 发送通知
     if (body) {
         new Notification(title, {
@@ -748,9 +754,9 @@ $(document).ready(() => {
     // 检查通知权限
     if (Notification.permission === "granted") {
         notificationPermission = true;
-        updateNotificationStatus("通知: 可以了哦~");
+        updateNotificationStatus("通知: 允许通知~");
     } else {
-        updateNotificationStatus("通知: 不允许哦~");
+        updateNotificationStatus("通知: 被拒绝啦~");
     }
 
     // 初始化WebSocket连接
