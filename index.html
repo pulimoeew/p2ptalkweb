@@ -239,7 +239,7 @@
     </div>
     
     <!-- 版本信息显示 -->
-    <div id="version-info">制作: pulimo999 版本: <span id="current-version">2.0</span></div>
+    <div id="version-info">制作: pulimo999 版本: <span id="current-version"></div>
     
     <!-- 更新提示框 -->
     <div id="update-overlay"></div>
@@ -278,7 +278,7 @@ const storage = {
 
 let ws = null;
 let reconnectTimer = null;
-const RECONNECT_INTERVAL = 3000; 
+const RECONNECT_INTERVAL = 2000; 
 
 let synth = window.speechSynthesis;
 let voices = [];
@@ -374,7 +374,10 @@ function processEarthquakeData(data) {
     
     showAlert(text);
     speakText(text);
-    sendNotification(text, data.code);
+    
+    // 发送通知
+    sendNotification(data);
+    
     updateStatus("connected", `${timeStr} 情報更新 (${data.code})`);
 }
 
@@ -482,6 +485,56 @@ ${areaText}`;
     }
 };
 
+// 发送Windows通知
+const notificationTemplates = {
+    // 震源震度情報
+    DetailScale: (data) => {
+        return `震源・震度情報: ${data.earthquake.hypocenter.name}
+${formatTimeShort(data.earthquake.time)} 発生
+深度: ${formatDepth(data.earthquake.hypocenter.depth)}
+マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
+最大震度: ${formatScale(data.earthquake.maxScale)}`;
+    },
+
+    // 震源情報
+    Destination: (data) => {
+        return `震源情報: ${data.earthquake.hypocenter.name}
+${formatTimeShort(data.earthquake.time)} 発生
+震源深度: ${formatDepth(data.earthquake.hypocenter.depth)}
+マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
+${formatTsunami(data.earthquake.domesticTsunami)}`;
+    },
+
+    // 震度速報
+    ScalePrompt: (data) => {
+        let mainRegion = "不明";
+        if (data.points && data.points.length > 0) {
+            mainRegion = findRegionByArea(data.points[0].addr);
+        }
+        return `震度速報: ${mainRegion}地方
+${formatTimeShort(data.earthquake.time)} 発生
+最大震度: ${formatScale(data.earthquake.maxScale)}`;
+    },
+
+    // 遠地情報
+    Foreign: (data) => {
+        if (isVolcanicEruption(data)) {
+            return `遠地噴火情報: ${data.comments.freeFormComment} `;
+        }
+        return `遠地地震情報: ${data.earthquake.hypocenter.name}
+${formatTimeShort(data.earthquake.time)} 発生
+マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
+震源深度: ${formatDepth(data.earthquake.hypocenter.depth)}
+${formatTsunami(data.earthquake.domesticTsunami)}`;
+    },
+
+    // 地震预警（EEW）
+    EEW: (data) => {
+        const prefs = [...new Set(data.areas.map(area => area.pref))];
+        return `${data.earthquake.hypocenter.reduceName}で地震、強い揺れに警戒: ${prefs.join('、')}`;
+    }
+};
+
 function isVolcanicEruption(data) {
     return data.issue.type === "Foreign" && 
            data.earthquake.hypocenter.depth === -1 &&
@@ -507,6 +560,14 @@ function formatTime(timeStr) {
     } else {
         return `午後${hourNum - 12}時${minute}分`;
     }
+}
+
+// 简短时间
+function formatTimeShort(timeStr) {
+    if (!timeStr) return "";
+    const timePart = timeStr.split(' ')[1];
+    if (!timePart) return "";
+    return timePart.substring(0, 5);
 }
 
 function formatDepth(depth) {
@@ -581,29 +642,39 @@ function speakText(text) {
 }
 
 // 发送Windows通知
-function sendNotification(message, code) {
+function sendNotification(data) {
     if (!notificationPermission) return;
     
-    let title;
-    if (code === 556) {
+    let title = "P2P地震情報";
+    let body = "";
+    
+    if (data.code === 556) {
         title = "緊急地震速報 (EEW)";
-    } else if (code === 551) {
-        title = "地震情報";
-    } else {
-        title = "P2P地震情報";
+        body = notificationTemplates.EEW(data);
+    } else if (data.code === 551) {
+        if (isVolcanicEruption(data)) {
+            title = "遠地噴火情報";
+            body = notificationTemplates.Volcanic(data);
+        } else {
+            title = "地震情報";
+            const template = notificationTemplates[data.issue.type] || (d => `情報类型: ${d.issue.type}`);
+            body = template(data);
+        }
     }
     
     // 发送通知
-    new Notification(title, {
-        body: message,
-        icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
-    });
+    if (body) {
+        new Notification(title, {
+            body: body,
+            icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
+        });
+    }
 }
 
 // 请求通知权限
 function requestNotificationPermission() {
     if (!("Notification" in window)) {
-        updateNotificationStatus("哎呀，您的浏览器不支持通知，太古老了吧~");
+        updateNotificationStatus("哎呀，您的浏览器不支持通知，赶紧换一个吧~");
         return;
     }
     
@@ -613,7 +684,7 @@ function requestNotificationPermission() {
             updateNotificationStatus("通知: 允许通知~");
             // 发送测试通知
             new Notification("P2PquakeTalk", {
-                body: "地震情報通知测试~",
+                body: "这只是一个测试~",
                 icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
             });
         } else {
@@ -670,10 +741,10 @@ $(document).ready(() => {
         storage.set('voice', $('#voiceList').val());
     });
     
-    // 通知权限按钮
+    // 申请通知权限按钮
     $('#notification-toggle').click(requestNotificationPermission);
     
-    // 检查现有通知权限
+    // 检查通知权限
     if (Notification.permission === "granted") {
         notificationPermission = true;
         updateNotificationStatus("通知: 可以了哦~");
@@ -710,14 +781,14 @@ function checkVersionUpdate() {
     
     fetch(`${versionUrl}?t=${timestamp}`)
         .then(response => {
-            if (!response.ok) throw new Error('版本信息获取失败');
+            if (!response.ok) throw new Error('哎呀，版本信息获取失败~');
             return response.json();
         })
         .then(data => {
             const latestVersion = data.p2pversion || data.version;
             
             if (!latestVersion) {
-                throw new Error('未找到版本信息！');
+                throw new Error('哎呀，没有找到版本信息~');
             }
             
             $("#latest-version-display").text(latestVersion);
@@ -727,7 +798,7 @@ function checkVersionUpdate() {
             }
         })
         .catch(error => {
-            console.error('版本检查错误:', error);
+            console.error('哎呀，版本检查错误:', error);
         });
 }
 </script>
