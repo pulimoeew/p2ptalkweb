@@ -644,27 +644,30 @@ function sendNotification(data) {
     
     let title = "P2P地震情報";
     let body = "";
-    
-    if (data.code === 556) {
+
+      if (data.code === 556) {
         title = "緊急地震速報 (EEW)";
         body = notificationTemplates.EEW(data);
     } else if (data.code === 551) {
         switch(data.issue.type) {
             case "DetailScale":
-                title = "震源・震度情報 ${formatTimeShort(data.earthquake.time)} 発生";
+                title = `震源・震度情報  ${formatTimeShort(data.earthquake.time)} 発生`;
                 break;
             case "ScalePrompt":
-                title = "震度速報 ${formatTimeShort(data.earthquake.time)} 発生";
+                title = `震度速報 ${formatTimeShort(data.earthquake.time)} 発生`;
+                break;
+            case "Destination":
+                title = `震源情報 ${formatTimeShort(data.earthquake.time)} 発生`;
                 break;
             case "Foreign":
                 if (isVolcanicEruption(data)) {
-                    title = "遠地噴火情報 ${formatTimeShort(data.earthquake.time)} 発生";
+                    title = `遠地噴火情報 ${formatTimeShort(data.earthquake.time)} 発生`;
                 } else {
-                    title = "遠地地震情報 ${formatTimeShort(data.earthquake.time)} 発生";
+                    title = `遠地地震情報 ${formatTimeShort(data.earthquake.time)} 発生`;
                 }
                 break;
             default:
-                title = "地震情報 ${formatTimeShort(data.earthquake.time)} 発生";
+                title = `地震情報 ${formatTimeShort(data.earthquake.time)} 発生`;
 }
             const template = notificationTemplates[data.issue.type] || (d => `情報タイプ: ${d.issue.type}`);
         body = template(data);
