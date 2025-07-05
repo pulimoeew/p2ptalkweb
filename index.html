@@ -490,7 +490,6 @@ const notificationTemplates = {
     // 震源震度情報
     DetailScale: (data) => {
         return `震源: ${data.earthquake.hypocenter.name}
-${formatTimeShort(data.earthquake.time)} 発生
 深度: ${data.earthquake.hypocenter.depth}km
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 最大震度: ${formatScale(data.earthquake.maxScale)}
@@ -500,7 +499,6 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
     // 震源情報
     Destination: (data) => {
         return `震源: ${data.earthquake.hypocenter.name}
-${formatTimeShort(data.earthquake.time)} 発生
 深度: ${data.earthquake.hypocenter.depth}km
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
@@ -512,7 +510,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
         if (data.points && data.points.length > 0) {
             mainRegion = findRegionByArea(data.points[0].addr);
         }
-        return `${formatTimeShort(data.earthquake.time)}発生、 ${mainRegion}地方で強い地震
+        return `${mainRegion}地方で強い地震
 最大震度: ${formatScale(data.earthquake.maxScale)}、 今後の情報に注意してください`;
     },
 
@@ -522,7 +520,6 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
             return `${data.comments.freeFormComment} `;
         }
         return `震源:${data.earthquake.hypocenter.name}
-${formatTimeShort(data.earthquake.time)} 発生
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 深度: ${data.earthquake.hypocenter.depth}km
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
@@ -654,20 +651,20 @@ function sendNotification(data) {
     } else if (data.code === 551) {
         switch(data.issue.type) {
             case "DetailScale":
-                title = "震源・震度情報";
+                title = "震源・震度情報 ${formatTimeShort(data.earthquake.time)} 発生";
                 break;
             case "ScalePrompt":
-                title = "震度速報";
+                title = "震度速報 ${formatTimeShort(data.earthquake.time)} 発生";
                 break;
             case "Foreign":
                 if (isVolcanicEruption(data)) {
-                    title = "遠地噴火情報";
+                    title = "遠地噴火情報 ${formatTimeShort(data.earthquake.time)} 発生";
                 } else {
-                    title = "遠地地震情報";
+                    title = "遠地地震情報 ${formatTimeShort(data.earthquake.time)} 発生";
                 }
                 break;
             default:
-                title = "地震情報";
+                title = "地震情報 ${formatTimeShort(data.earthquake.time)} 発生";
 }
             const template = notificationTemplates[data.issue.type] || (d => `情報タイプ: ${d.issue.type}`);
         body = template(data);
