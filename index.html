@@ -268,7 +268,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "2.2";
+const CURRENT_VERSION = "2.3";
 
 // 持久化存储
 const storage = {
@@ -490,7 +490,7 @@ const notificationTemplates = {
     // 震源震度情報
     DetailScale: (data) => {
         return `震源: ${data.earthquake.hypocenter.name}
-深度: ${data.earthquake.hypocenter.depth}km
+深度: ${formatDepth(data.earthquake.hypocenter.depth)}
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 最大震度: ${formatScale(data.earthquake.maxScale)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
@@ -499,7 +499,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
     // 震源情報
     Destination: (data) => {
         return `震源: ${data.earthquake.hypocenter.name}
-深度: ${data.earthquake.hypocenter.depth}km
+深度: ${formatDepth(data.earthquake.hypocenter.depth)}
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
@@ -521,7 +521,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
         }
         return `震源:${data.earthquake.hypocenter.name}
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
-深度: ${data.earthquake.hypocenter.depth}km
+深度: ${formatDepth(data.earthquake.hypocenter.depth)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
 
@@ -539,7 +539,7 @@ function isVolcanicEruption(data) {
            data.earthquake.maxScale === -1;
 }
 
-// 数据格式化工具函数
+// 简短/规范时间
 function formatTime(timeStr) {
     if (!timeStr) return "不明";
     const timePart = timeStr.split(' ')[1];
@@ -677,7 +677,7 @@ function sendNotification(data) {
     if (body) {
         new Notification(title, {
             body: body,
-            icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
+            icon: 'https://raw.githubusercontent.com/pulimo999/other/main/${formatScale(data.earthquake.maxScale)}.png'
         });
     }
 }
