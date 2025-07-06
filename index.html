@@ -239,7 +239,7 @@
     </div>
     
     <!-- 版本信息显示 -->
-    <div id="version-info">制作: pulimo999 版本: <span id="current-version"></div>
+    <div id="version-info">制作: pulimo999 版本: <span id="current-version">2.0</span></div>
     
     <!-- 更新提示框 -->
     <div id="update-overlay"></div>
@@ -268,7 +268,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "2.3";
+const CURRENT_VERSION = "2.4";
 
 // 持久化存储
 const storage = {
@@ -278,7 +278,7 @@ const storage = {
 
 let ws = null;
 let reconnectTimer = null;
-const RECONNECT_INTERVAL = 2000; 
+const RECONNECT_INTERVAL = 3000; 
 
 let synth = window.speechSynthesis;
 let voices = [];
@@ -375,7 +375,7 @@ function processEarthquakeData(data) {
     showAlert(text);
     speakText(text);
     
-    // 发送通知
+    // 发送通知（使用原始数据）
     sendNotification(data);
     
     updateStatus("connected", `${timeStr} 情報更新 (${data.code})`);
@@ -480,25 +480,23 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
         const areaText = groups.join('\n');
         
         return `緊急地震速報です、${data.earthquake.hypocenter.reduceName}で地震。
-強い揺れに警戒してください。
-${areaText}`;
+強い揺れに警戒してください：${areaText}`;
     }
 };
 
-// 发送Windows通知
+// 通知区域~
 const notificationTemplates = {
     // 震源震度情報
     DetailScale: (data) => {
-        return `震源: ${data.earthquake.hypocenter.name}
+        return `${data.earthquake.hypocenter.name}
 深度: ${formatDepth(data.earthquake.hypocenter.depth)}
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
-最大震度: ${formatScale(data.earthquake.maxScale)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
 
     // 震源情報
     Destination: (data) => {
-        return `震源: ${data.earthquake.hypocenter.name}
+        return `${data.earthquake.hypocenter.name}
 深度: ${formatDepth(data.earthquake.hypocenter.depth)}
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
@@ -510,25 +508,26 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
         if (data.points && data.points.length > 0) {
             mainRegion = findRegionByArea(data.points[0].addr);
         }
-        return `${mainRegion}地方で強い地震
-最大震度: ${formatScale(data.earthquake.maxScale)}、 今後の情報に注意してください`;
+        return `${mainRegion}地方 強い地震
+今後の情報に注意してください`;
     },
 
     // 遠地情報
     Foreign: (data) => {
         if (isVolcanicEruption(data)) {
-            return `${data.comments.freeFormComment} `;
+            return `${data.comments.freeFormComment}`;
         }
-        return `震源:${data.earthquake.hypocenter.name}
+        return `${data.earthquake.hypocenter.name}
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
 深度: ${formatDepth(data.earthquake.hypocenter.depth)}
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
 
-    // 地震预警（EEW）
+    // 地震预警
     EEW: (data) => {
         const prefs = [...new Set(data.areas.map(area => area.pref))];
-        return `${data.earthquake.hypocenter.reduceName}で地震、強い揺れに警戒: ${prefs.join('、')}`;
+        return `${data.earthquake.hypocenter.reduceName}で地震
+強い揺れに警戒: ${prefs.join('、')}`;
     }
 };
 
@@ -539,7 +538,23 @@ function isVolcanicEruption(data) {
            data.earthquake.maxScale === -1;
 }
 
-// 简短/规范时间
+// 震度图标
+function getScaleImageName(scale) {
+    const scaleMap = {
+        10: "1",
+        20: "2",
+        30: "3",
+        40: "4",
+        45: "5弱",
+        50: "5強",
+        55: "6弱",
+        60: "6強",
+        70: "7"
+    };
+    return scaleMap[scale] || "不明";
+}
+
+// 规范时间
 function formatTime(timeStr) {
     if (!timeStr) return "不明";
     const timePart = timeStr.split(' ')[1];
@@ -559,7 +574,7 @@ function formatTime(timeStr) {
     }
 }
 
-// 简短时间（for通知）
+// 简短时间格式（for通知）
 function formatTimeShort(timeStr) {
     if (!timeStr) return "";
     const timePart = timeStr.split(' ')[1];
@@ -644,40 +659,66 @@ function sendNotification(data) {
     
     let title = "P2P地震情報";
     let body = "";
-
-      if (data.code === 556) {
-        title = "緊急地震速報 (EEW)";
+    
+    // 获取发生时间（简短格式）
+    const timeStr = data.earthquake && data.earthquake.time 
+        ? formatTimeShort(data.earthquake.time) + "発生"
+        : "";
+    
+    if (data.code === 556) {
+        title = `緊急地震速報 (EEW) ${timeStr}`;
         body = notificationTemplates.EEW(data);
     } else if (data.code === 551) {
+        // 根据具体情报类型设置不同标题
         switch(data.issue.type) {
             case "DetailScale":
-                title = `震源・震度情報  ${formatTimeShort(data.earthquake.time)} 発生`;
+                title = `震源・震度情報 ${timeStr}`;
                 break;
             case "ScalePrompt":
-                title = `震度速報 ${formatTimeShort(data.earthquake.time)} 発生`;
-                break;
-            case "Destination":
-                title = `震源情報 ${formatTimeShort(data.earthquake.time)} 発生`;
+                title = `震度速報 ${timeStr}`;
                 break;
             case "Foreign":
                 if (isVolcanicEruption(data)) {
-                    title = `遠地噴火情報 ${formatTimeShort(data.earthquake.time)} 発生`;
+                    title = `遠地噴火情報 ${timeStr}`;
                 } else {
-                    title = `遠地地震情報 ${formatTimeShort(data.earthquake.time)} 発生`;
+                    title = `遠地地震情報 ${timeStr}`;
                 }
                 break;
             default:
-                title = `地震情報 ${formatTimeShort(data.earthquake.time)} 発生`;
-}
-            const template = notificationTemplates[data.issue.type] || (d => `情報タイプ: ${d.issue.type}`);
+                title = `地震情報 ${timeStr}`;
+        }
+        
+        const template = notificationTemplates[data.issue.type] || (d => `情報タイプ: ${d.issue.type}`);
         body = template(data);
-}
-
+    }
+    
+    // 设置通知图标
+    let iconUrl;
+    const baseIconUrl = "https://raw.githubusercontent.com/pulimo999/other/refs/heads/main/";
+    
+    if (data.code === 556) {
+        iconUrl = baseIconUrl + "不明.png";
+    } else if (data.code === 551) {
+        const scaleValue = data.earthquake.maxScale;
+        let imageName;
+        
+        if (scaleValue === 46) {
+            imageName = "不明.png";
+        } else {
+            imageName = getScaleImageName(scaleValue) + ".png";
+        }
+        
+        iconUrl = baseIconUrl + imageName;
+    } else {
+        // 其他情况使用不明图标
+        iconUrl = baseIconUrl + "不明.png";
+    }
+    
     // 发送通知
     if (body) {
         new Notification(title, {
             body: body,
-            icon: 'https://raw.githubusercontent.com/pulimo999/other/main/${formatScale(data.earthquake.maxScale)}.png'
+            icon: iconUrl
         });
     }
 }
@@ -685,7 +726,7 @@ function sendNotification(data) {
 // 请求通知权限
 function requestNotificationPermission() {
     if (!("Notification" in window)) {
-        updateNotificationStatus("哎呀，您的浏览器不支持通知，赶紧换一个吧~");
+        updateNotificationStatus("哎呀，您的浏览器不支持通知，太古老了吧~");
         return;
     }
     
@@ -695,7 +736,7 @@ function requestNotificationPermission() {
             updateNotificationStatus("通知: 允许通知~");
             // 发送测试通知
             new Notification("P2PquakeTalk", {
-                body: "这只是一个测试~",
+                body: "地震情報通知测试~",
                 icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
             });
         } else {
@@ -752,10 +793,10 @@ $(document).ready(() => {
         storage.set('voice', $('#voiceList').val());
     });
     
-    // 申请通知权限按钮
+    // 通知权限按钮
     $('#notification-toggle').click(requestNotificationPermission);
     
-    // 检查通知权限
+    // 检查现有通知权限
     if (Notification.permission === "granted") {
         notificationPermission = true;
         updateNotificationStatus("通知: 允许通知~");
@@ -792,14 +833,14 @@ function checkVersionUpdate() {
     
     fetch(`${versionUrl}?t=${timestamp}`)
         .then(response => {
-            if (!response.ok) throw new Error('哎呀，版本信息获取失败~');
+            if (!response.ok) throw new Error('版本信息获取失败');
             return response.json();
         })
         .then(data => {
             const latestVersion = data.p2pversion || data.version;
             
             if (!latestVersion) {
-                throw new Error('哎呀，没有找到版本信息~');
+                throw new Error('未找到版本信息！');
             }
             
             $("#latest-version-display").text(latestVersion);
@@ -809,7 +850,7 @@ function checkVersionUpdate() {
             }
         })
         .catch(error => {
-            console.error('哎呀，版本检查错误:', error);
+            console.error('版本检查错误:', error);
         });
 }
 </script>
