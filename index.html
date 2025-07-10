@@ -239,7 +239,7 @@
     </div>
     
     <!-- 版本信息显示 -->
-    <div id="version-info">制作: pulimo999 版本: <span id="current-version">2.0</span></div>
+    <div id="version-info">制作: pulimo999 版本: <span id="current-version"></div>
     
     <!-- 更新提示框 -->
     <div id="update-overlay"></div>
@@ -268,7 +268,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "2.4";
+const CURRENT_VERSION = "3.0";
 
 // 持久化存储
 const storage = {
@@ -284,13 +284,13 @@ let synth = window.speechSynthesis;
 let voices = [];
 let hideTimer = null;
 let areaData = null; 
+let warnAreaMap = null;
 let notificationPermission = false;
 
-
+// 初始化WebSocket连接
 function initWebSocket() {
     updateStatus("connecting", "WebSocket连接中...");
     
-   
     if (ws) {
         ws.close();
         ws = null;
@@ -310,7 +310,6 @@ function initWebSocket() {
         try {
             const data = JSON.parse(event.data);
             
-            // 只处理551和556类型的数据
             if (data.code === 551 || data.code === 556) {
                 processEarthquakeData(data);
             }
@@ -375,12 +374,13 @@ function processEarthquakeData(data) {
     showAlert(text);
     speakText(text);
     
-    // 发送通知（使用原始数据）
+    // 发送通知
     sendNotification(data);
     
     updateStatus("connected", `${timeStr} 情報更新 (${data.code})`);
 }
 
+// 加载地区数据
 async function loadAreaData() {
     try {
         const response = await fetch('https://raw.githubusercontent.com/pulimo999/other/main/p2parea.json');
@@ -389,6 +389,54 @@ async function loadAreaData() {
     } catch (error) {
         console.error('地区数据加载失败:', error);
     }
+}
+
+// 加载警报地区数据
+async function loadWarnAreaMap() {
+    try {
+        const response = await fetch('https://raw.githubusercontent.com/pulimo999/other/main/warnarea.json');
+        const warnAreaData = await response.json();
+        
+        warnAreaMap = {};
+        for (const region of warnAreaData) {
+            for (const area of region.list) {
+                warnAreaMap[area] = region.name;
+            }
+        }
+        console.log('警报地区数据加载成功');
+    } catch (error) {
+        console.error('警报地区数据加载失败:', error);
+        warnAreaMap = null;
+    }
+}
+
+function mapToLargeRegion(pref) {
+    if (!warnAreaMap) return pref;
+    
+   if (warnAreaMap[pref]) {
+        return warnAreaMap[pref];
+    }
+    
+    // 尝试部分匹配
+    for (const [key, value] of Object.entries(warnAreaMap)) {
+        if (pref.includes(key)) {
+            return value;
+        }
+    }
+    
+    return pref;
+}
+
+function convertToLargeRegions(prefs) {
+    if (!prefs || prefs.length === 0) return [];
+    
+   const largeRegionsSet = new Set();
+    for (const pref of prefs) {
+        const largeRegion = mapToLargeRegion(pref);
+        largeRegionsSet.add(largeRegion);
+    }
+    
+    return Array.from(largeRegionsSet).filter(region => region && region.trim() !== '');
 }
 
 function findRegionByArea(areaName) {
@@ -416,7 +464,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
     Destination: (data) => {
         return `震源情報を受信しました。${formatTime(data.earthquake.time)}ごろ、地震がありました。
 震源地は、${data.earthquake.hypocenter.name}で、震源の深さは${formatDepth(data.earthquake.hypocenter.depth)}、
-地震の规模を示すマグニチュードは${formatMagnitude(data.earthquake.hypocenter.magnitude)}と推定されます。
+地震の規模を示すマグニチュードは${formatMagnitude(data.earthquake.hypocenter.magnitude)}と推定されます。
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
 
@@ -461,7 +509,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
 
         return `遠地地震情報を受信しました。${formatTime(data.earthquake.time)}ごろ、海外で地震がありました。
 震源地は、${data.earthquake.hypocenter.name}で、震源の深さは${formatDepth(data.earthquake.hypocenter.depth)}、
-地震の规模を示すマグニチュードは${formatMagnitude(data.earthquake.hypocenter.magnitude)}と推定されます。
+地震の規模を示すマグニチュードは${formatMagnitude(data.earthquake.hypocenter.magnitude)}と推定されます。
 ${formatTsunami(data.earthquake.domesticTsunami)}
 また、${formatForeignTsunami(data.earthquake.foreignTsunami)}
 この地震により、観測された最大震度は${formatScale(data.earthquake.maxScale)}です。
@@ -470,17 +518,30 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
 
     // 地震预警
     EEW: (data) => {
-        const prefs = [...new Set(data.areas.map(area => area.pref))];
+       
+        const allPrefs = [...new Set(data.areas.map(area => area.pref))];
         
-        const groups = [];
-        for (let i = 0; i < prefs.length; i += 5) {
-            groups.push(prefs.slice(i, i + 5).join('、'));
+        let regionGroups = [];
+        
+        
+        if (allPrefs.length > 10) {
+            const largeRegions = convertToLargeRegions(allPrefs);
+            
+            
+            for (let i = 0; i < largeRegions.length; i += 5) {
+                regionGroups.push(largeRegions.slice(i, i + 5).join('、'));
+            }
+        } else {
+            for (let i = 0; i < allPrefs.length; i += 5) {
+                regionGroups.push(allPrefs.slice(i, i + 5).join('、'));
+            }
         }
         
-        const areaText = groups.join('\n');
+        const areaText = regionGroups.join('\n');
         
         return `緊急地震速報です、${data.earthquake.hypocenter.reduceName}で地震。
-強い揺れに警戒してください：${areaText}`;
+強い揺れに警戒してください：
+${areaText}`;
     }
 };
 
@@ -515,7 +576,8 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
     // 遠地情報
     Foreign: (data) => {
         if (isVolcanicEruption(data)) {
-            return `${data.comments.freeFormComment}`;
+            return `${data.earthquake.hypocenter.name}
+${formatTsunami(data.earthquake.domesticTsunami)}`;
         }
         return `${data.earthquake.hypocenter.name}
 マグニチュード: ${formatMagnitude(data.earthquake.hypocenter.magnitude)}
@@ -527,7 +589,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
     EEW: (data) => {
         const prefs = [...new Set(data.areas.map(area => area.pref))];
         return `${data.earthquake.hypocenter.reduceName}で地震
-強い揺れに警戒: ${prefs.join('、')}`;
+強い揺れに警戒: ${areaText}`;
     }
 };
 
@@ -677,6 +739,9 @@ function sendNotification(data) {
             case "ScalePrompt":
                 title = `震度速報 ${timeStr}`;
                 break;
+            case "Destination":
+                title = `震源情報 ${timeStr}`;
+                break;
             case "Foreign":
                 if (isVolcanicEruption(data)) {
                     title = `遠地噴火情報 ${timeStr}`;
@@ -726,7 +791,7 @@ function sendNotification(data) {
 // 请求通知权限
 function requestNotificationPermission() {
     if (!("Notification" in window)) {
-        updateNotificationStatus("哎呀，您的浏览器不支持通知，太古老了吧~");
+        updateNotificationStatus("哎呀，您的浏览器不支持通知，赶紧换一个吧~");
         return;
     }
     
@@ -736,7 +801,7 @@ function requestNotificationPermission() {
             updateNotificationStatus("通知: 允许通知~");
             // 发送测试通知
             new Notification("P2PquakeTalk", {
-                body: "地震情報通知测试~",
+                body: "这只是一个测试~",
                 icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
             });
         } else {
@@ -821,12 +886,15 @@ $(document).ready(() => {
     
     // 加载地区数据
     loadAreaData();
+    
+    // 加载警报地区数据
+    loadWarnAreaMap();
 });
 
 // 版本更新检查
 function checkVersionUpdate() {
     // 更新检测
-    const versionUrl = "https://raw.githubusercontent.com/pulimo999/other/main/update.json";
+    const versionUrl = "https://raw.githubusercontent.com/pulimo999/other/refs/heads/main/update.json";
     
     // 时间戳，避免缓存问题
     const timestamp = new Date().getTime();
