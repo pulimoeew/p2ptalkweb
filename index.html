@@ -239,7 +239,7 @@
     </div>
     
     <!-- 版本信息显示 -->
-    <div id="version-info">制作: pulimo999 版本: <span id="current-version"></div>
+    <div id="version-info">制作: pulimo999 版本: <span id="current-version">3.1</span></div>
     
     <!-- 更新提示框 -->
     <div id="update-overlay"></div>
@@ -268,7 +268,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "3.0";
+const CURRENT_VERSION = "3.1";
 
 // 持久化存储
 const storage = {
@@ -413,7 +413,7 @@ async function loadWarnAreaMap() {
 function mapToLargeRegion(pref) {
     if (!warnAreaMap) return pref;
     
-   if (warnAreaMap[pref]) {
+    if (warnAreaMap[pref]) {
         return warnAreaMap[pref];
     }
     
@@ -430,7 +430,7 @@ function mapToLargeRegion(pref) {
 function convertToLargeRegions(prefs) {
     if (!prefs || prefs.length === 0) return [];
     
-   const largeRegionsSet = new Set();
+    const largeRegionsSet = new Set();
     for (const pref of prefs) {
         const largeRegion = mapToLargeRegion(pref);
         largeRegionsSet.add(largeRegion);
@@ -518,22 +518,19 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
 
     // 地震预警
     EEW: (data) => {
-       
-        const allPrefs = [...new Set(data.areas.map(area => area.pref))];
+        const prefs = [...new Set(data.areas.map(area => area.pref))];
         
         let regionGroups = [];
         
-        
-        if (allPrefs.length > 10) {
-            const largeRegions = convertToLargeRegions(allPrefs);
-            
+        if (prefs.length > 10) {
+            const largeRegions = convertToLargeRegions(prefs);
             
             for (let i = 0; i < largeRegions.length; i += 5) {
                 regionGroups.push(largeRegions.slice(i, i + 5).join('、'));
             }
         } else {
-            for (let i = 0; i < allPrefs.length; i += 5) {
-                regionGroups.push(allPrefs.slice(i, i + 5).join('、'));
+            for (let i = 0; i < prefs.length; i += 5) {
+                regionGroups.push(prefs.slice(i, i + 5).join('、'));
             }
         }
         
@@ -545,7 +542,7 @@ ${areaText}`;
     }
 };
 
-// 通知区域~
+// 通知区域
 const notificationTemplates = {
     // 震源震度情報
     DetailScale: (data) => {
@@ -585,11 +582,20 @@ ${formatTsunami(data.earthquake.domesticTsunami)}`;
 ${formatTsunami(data.earthquake.domesticTsunami)}`;
     },
 
-    // 地震预警
+    // 地震预警(EEW)
     EEW: (data) => {
         const prefs = [...new Set(data.areas.map(area => area.pref))];
+        let regionText;
+        
+        if (prefs.length > 10) {
+            const largeRegions = convertToLargeRegions(prefs);
+            regionText = largeRegions.join('、');
+        } else {
+            regionText = prefs.join('、');
+        }
+        
         return `${data.earthquake.hypocenter.reduceName}で地震
-強い揺れに警戒: ${areaText}`;
+強い揺れに警戒: ${regionText}`;
     }
 };
 
@@ -731,8 +737,7 @@ function sendNotification(data) {
         title = `緊急地震速報 (EEW) ${timeStr}`;
         body = notificationTemplates.EEW(data);
     } else if (data.code === 551) {
-        // 根据具体情报类型设置不同标题
-        switch(data.issue.type) {
+       switch(data.issue.type) {
             case "DetailScale":
                 title = `震源・震度情報 ${timeStr}`;
                 break;
@@ -861,7 +866,7 @@ $(document).ready(() => {
     // 通知权限按钮
     $('#notification-toggle').click(requestNotificationPermission);
     
-    // 检查现有通知权限
+    // 检查通知权限
     if (Notification.permission === "granted") {
         notificationPermission = true;
         updateNotificationStatus("通知: 允许通知~");
@@ -894,7 +899,7 @@ $(document).ready(() => {
 // 版本更新检查
 function checkVersionUpdate() {
     // 更新检测
-    const versionUrl = "https://raw.githubusercontent.com/pulimo999/other/refs/heads/main/update.json";
+    const versionUrl = "https://raw.githubusercontent.com/pulimo999/other/main/update.json";
     
     // 时间戳，避免缓存问题
     const timestamp = new Date().getTime();
