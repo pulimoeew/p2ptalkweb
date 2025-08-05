@@ -5,7 +5,7 @@
     <title>P2PQuake情報朗読システム</title>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <style>
-        body { 
+       body { 
             font-family: "Meiryo", sans-serif; 
             margin: 0;
             background-color: transparent;
@@ -239,7 +239,7 @@
     </div>
     
     <!-- 版本信息显示 -->
-    <div id="version-info">制作: pulimo999 版本: <span id="current-version">3.1</span></div>
+    <div id="version-info">制作: pulimo999 版本: <span id="current-version"></div>
     
     <!-- 更新提示框 -->
     <div id="update-overlay"></div>
@@ -268,7 +268,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "3.1";
+const CURRENT_VERSION = "3.2";
 
 // 持久化存储
 const storage = {
@@ -286,6 +286,10 @@ let hideTimer = null;
 let areaData = null; 
 let warnAreaMap = null;
 let notificationPermission = false;
+
+// 重复,No！
+const processedSignatures = new Set();
+const MAX_SIGNATURE_AGE = 5 * 60 * 1000;
 
 // 初始化WebSocket连接
 function initWebSocket() {
@@ -355,10 +359,45 @@ function updateStatus(statusClass, message) {
         .html(`<span class="connection-status ${statusClass}"></span>${message}`);
 }
 
+// 生成数据签名防止重复
+function generateDataSignature(data) {
+    let signature = `${data.code}|`;
+    
+    if (data.earthquake) {
+        signature += `${data.earthquake.time || ''}|`;
+        signature += `${(data.earthquake.hypocenter || {}).name || ''}|`;
+        signature += `${data.earthquake.maxScale || ''}|`;
+    }
+    
+    if (data.issue) {
+        signature += `${data.issue.type || ''}|`;
+    }
+    
+    return signature;
+}
+
 // 处理地震数据
 function processEarthquakeData(data) {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString();
+    // 清理过期签名
+    const now = Date.now();
+    for (const [signature, timestamp] of processedSignatures) {
+        if (now - timestamp > MAX_SIGNATURE_AGE) {
+            processedSignatures.delete(signature);
+        }
+    }
+    
+    // 检查重复
+    const signature = generateDataSignature(data);
+    if (processedSignatures.has(signature)) {
+        console.log("重复数据，滚出去:", signature);
+        return;
+    }
+    
+    // 添加新签名
+    processedSignatures.add(signature);
+    
+    const nowTime = new Date();
+    const timeStr = nowTime.toLocaleTimeString();
     
     let text;
     
@@ -417,7 +456,6 @@ function mapToLargeRegion(pref) {
         return warnAreaMap[pref];
     }
     
-    // 尝试部分匹配
     for (const [key, value] of Object.entries(warnAreaMap)) {
         if (pref.includes(key)) {
             return value;
@@ -716,7 +754,20 @@ function speakText(text) {
             .catch(error => console.error('BouyomiChan连接失败:', error));
     } else if (synth && voices.length > 0) {
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.voice = voices.find(v => v.voiceURI === $('#voiceList').val());
+        
+        // 修复Chrome语音问题
+        const selectedVoiceURI = $('#voiceList').val();
+        let voice = voices.find(v => v.voiceURI === selectedVoiceURI);
+        
+        if (!voice) {
+            // 尝试找到日语语音
+            voice = voices.find(v => v.lang.startsWith('ja'));
+        }
+        
+        if (voice) {
+            utterance.voice = voice;
+        }
+        
         synth.speak(utterance);
     }
 }
@@ -823,7 +874,24 @@ function updateNotificationStatus(message) {
 
 // 语音初始化
 function initVoices() {
-    voices = synth.getVoices().filter(v => v.lang.startsWith('ja'));
+    // 修复Chrome语音问题
+    const initialVoices = synth.getVoices();
+    if (initialVoices.length > 0) {
+        voices = initialVoices.filter(v => v.lang.startsWith('ja'));
+    }
+    
+    // 重试机制
+    setTimeout(() => {
+        const updatedVoices = synth.getVoices();
+        if (updatedVoices.length > initialVoices.length) {
+            voices = updatedVoices.filter(v => v.lang.startsWith('ja'));
+        }
+        
+        populateVoiceList();
+    }, 1000);
+}
+
+function populateVoiceList() {
     $('#voiceList').html(voices.map(v => 
         `<option value="${v.voiceURI}">${v.name} (${v.lang})</option>`
     ));
@@ -899,7 +967,7 @@ $(document).ready(() => {
 // 版本更新检查
 function checkVersionUpdate() {
     // 更新检测
-    const versionUrl = "https://raw.githubusercontent.com/pulimo999/other/main/update.json";
+    const versionUrl = "https://raw.githubusercontent.com/pulimoeew/other/refs/heads/main/update.json";
     
     // 时间戳，避免缓存问题
     const timestamp = new Date().getTime();
