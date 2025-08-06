@@ -5,7 +5,7 @@
     <title>P2PQuake情報朗読システム</title>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <style>
-       body { 
+      body { 
             font-family: "Meiryo", sans-serif; 
             margin: 0;
             background-color: transparent;
@@ -238,10 +238,9 @@
         WebSocket接続中...
     </div>
     
-    <!-- 版本信息显示 -->
     <div id="version-info">制作: pulimo999 版本: <span id="current-version"></div>
     
-    <!-- 更新提示框 -->
+    <!-- 更新提示 -->
     <div id="update-overlay"></div>
     <div id="update-alert">
         <h3>版本更新提示</h3>
@@ -268,7 +267,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "3.2";
+const CURRENT_VERSION = "3.3";
 
 // 持久化存储
 const storage = {
@@ -287,9 +286,9 @@ let areaData = null;
 let warnAreaMap = null;
 let notificationPermission = false;
 
-// 重复,No！
-const processedSignatures = new Set();
-const MAX_SIGNATURE_AGE = 5 * 60 * 1000;
+// 防止重复和存储过多导致内存泄露
+const CacheIDs = new Set();
+const MAX_CACHE_SIZE = 500;
 
 // 初始化WebSocket连接
 function initWebSocket() {
@@ -315,6 +314,20 @@ function initWebSocket() {
             const data = JSON.parse(event.data);
             
             if (data.code === 551 || data.code === 556) {
+                // 检查是否重复消息
+                const msgID = generateMessageID(data);
+                if (CacheIDs.has(msgID)) {
+                    console.log("重复消息，滚出去喵~");
+                    return;
+                }
+                
+                // 添加到缓存
+                CacheIDs.add(msgID);
+                if (CacheIDs.size > MAX_CACHE_SIZE) {
+                    const firstID = CacheIDs.values().next().value;
+                    CacheIDs.delete(firstID);
+                }
+                
                 processEarthquakeData(data);
             }
         } catch (e) {
@@ -340,6 +353,18 @@ function initWebSocket() {
     };
 }
 
+// 生成ID
+function generateMessageID(data) {
+    if (data.code === 556) {
+        // ID标识
+        return `eew_${data._id}`;
+    } else if (data.code === 551) {
+        // 使用地震时间、震源名称和最大震度作为唯一标识
+        return `551_${data.earthquake.time}_${data.earthquake.hypocenter.name}_${data.earthquake.maxScale}`;
+    }
+    return `unknown_${Date.now()}`;
+}
+
 function scheduleReconnect() {
     if (reconnectTimer) return;
     
@@ -359,45 +384,10 @@ function updateStatus(statusClass, message) {
         .html(`<span class="connection-status ${statusClass}"></span>${message}`);
 }
 
-// 生成数据签名防止重复
-function generateDataSignature(data) {
-    let signature = `${data.code}|`;
-    
-    if (data.earthquake) {
-        signature += `${data.earthquake.time || ''}|`;
-        signature += `${(data.earthquake.hypocenter || {}).name || ''}|`;
-        signature += `${data.earthquake.maxScale || ''}|`;
-    }
-    
-    if (data.issue) {
-        signature += `${data.issue.type || ''}|`;
-    }
-    
-    return signature;
-}
-
 // 处理地震数据
 function processEarthquakeData(data) {
-    // 清理过期签名
-    const now = Date.now();
-    for (const [signature, timestamp] of processedSignatures) {
-        if (now - timestamp > MAX_SIGNATURE_AGE) {
-            processedSignatures.delete(signature);
-        }
-    }
-    
-    // 检查重复
-    const signature = generateDataSignature(data);
-    if (processedSignatures.has(signature)) {
-        console.log("重复数据，滚出去:", signature);
-        return;
-    }
-    
-    // 添加新签名
-    processedSignatures.add(signature);
-    
-    const nowTime = new Date();
-    const timeStr = nowTime.toLocaleTimeString();
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString();
     
     let text;
     
@@ -419,7 +409,6 @@ function processEarthquakeData(data) {
     updateStatus("connected", `${timeStr} 情報更新 (${data.code})`);
 }
 
-// 加载地区数据
 async function loadAreaData() {
     try {
         const response = await fetch('https://raw.githubusercontent.com/pulimo999/other/main/p2parea.json');
@@ -430,7 +419,6 @@ async function loadAreaData() {
     }
 }
 
-// 加载警报地区数据
 async function loadWarnAreaMap() {
     try {
         const response = await fetch('https://raw.githubusercontent.com/pulimo999/other/main/warnarea.json');
@@ -456,6 +444,7 @@ function mapToLargeRegion(pref) {
         return warnAreaMap[pref];
     }
     
+    // 尝试部分匹配
     for (const [key, value] of Object.entries(warnAreaMap)) {
         if (pref.includes(key)) {
             return value;
@@ -558,25 +547,17 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
     EEW: (data) => {
         const prefs = [...new Set(data.areas.map(area => area.pref))];
         
-        let regionGroups = [];
-        
-        if (prefs.length > 10) {
-            const largeRegions = convertToLargeRegions(prefs);
-            
-            for (let i = 0; i < largeRegions.length; i += 5) {
-                regionGroups.push(largeRegions.slice(i, i + 5).join('、'));
-            }
-        } else {
-            for (let i = 0; i < prefs.length; i += 5) {
-                regionGroups.push(prefs.slice(i, i + 5).join('、'));
-            }
-        }
-        
-        const areaText = regionGroups.join('\n');
+        let allRegions;
+    
+    if (prefs.length > 10) {
+        const largeRegions = convertToLargeRegions(prefs);
+        allRegions = largeRegions.join('、');
+    } else {
+        allRegions = prefs.join('、');
+    }
         
         return `緊急地震速報です、${data.earthquake.hypocenter.reduceName}で地震。
-強い揺れに警戒してください：
-${areaText}`;
+${allRegions}では、強い揺れに警戒してください。`;
     }
 };
 
@@ -752,24 +733,53 @@ function speakText(text) {
     if (voiceType === 'api') {
         fetch(`http://localhost:50080/talk?text=${encodeURIComponent(text)}`)
             .catch(error => console.error('BouyomiChan连接失败:', error));
-    } else if (synth && voices.length > 0) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        
-        // 修复Chrome语音问题
-        const selectedVoiceURI = $('#voiceList').val();
-        let voice = voices.find(v => v.voiceURI === selectedVoiceURI);
-        
-        if (!voice) {
-            // 尝试找到日语语音
-            voice = voices.find(v => v.lang.startsWith('ja'));
+    } else if (synth) {
+        // 确保语音列表已加载
+        if (voices.length === 0) {
+            voices = getAvailableVoices();
         }
         
-        if (voice) {
-            utterance.voice = voice;
+        if (voices.length > 0) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            const selectedVoiceURI = $('#voiceList').val();
+            let voice = voices.find(v => v.voiceURI === selectedVoiceURI);
+            
+            if (!voice) {
+                // 尝试找到日语语音
+                voice = voices.find(v => v.lang.startsWith('ja'));
+            }
+            
+            if (voice) {
+                utterance.voice = voice;
+            }
+            
+            // 在Chrome中需要特别处理语音选择
+            synth.speak(utterance);
+        } else {
+            console.warn("没有可用的语音，尝试重新加载");
+            // 尝试重新加载语音
+            setTimeout(() => {
+                voices = getAvailableVoices();
+                if (voices.length > 0) {
+                    speakText(text); // 重试
+                }
+            }, 500);
         }
-        
-        synth.speak(utterance);
     }
+}
+
+// 语音获取函数
+function getAvailableVoices() {
+    const allVoices = synth.getVoices();
+    
+    // Chrome中有时会返回空列表，需要特殊处理
+    if (allVoices.length === 0 && synth.onvoiceschanged !== undefined) {
+        // 如果语音列表为空，但事件处理器存在，说明语音尚未加载
+        return [];
+    }
+    
+    // 过滤出日语语音，别等下什么几把语言都不对就乱念
+    return allVoices.filter(v => v.lang.startsWith('ja') || v.lang.startsWith('ja-JP'));
 }
 
 // 发送Windows通知
@@ -785,7 +795,7 @@ function sendNotification(data) {
         : "";
     
     if (data.code === 556) {
-        title = `緊急地震速報 (EEW) ${timeStr}`;
+        title = `緊急地震速報 (気象庁) ${timeStr}`;
         body = notificationTemplates.EEW(data);
     } else if (data.code === 551) {
        switch(data.issue.type) {
@@ -857,7 +867,7 @@ function requestNotificationPermission() {
             updateNotificationStatus("通知: 允许通知~");
             // 发送测试通知
             new Notification("P2PquakeTalk", {
-                body: "这只是一个测试~",
+                body: "text~",
                 icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
             });
         } else {
@@ -872,33 +882,39 @@ function updateNotificationStatus(message) {
     $('#notification-status').text(message);
 }
 
-// 语音初始化
+// 语音初始化 - 专门优化Chrome兼容性
 function initVoices() {
-    // 修复Chrome语音问题
-    const initialVoices = synth.getVoices();
-    if (initialVoices.length > 0) {
-        voices = initialVoices.filter(v => v.lang.startsWith('ja'));
-    }
+    // 获取当前语音列表
+    voices = getAvailableVoices();
     
-    // 重试机制
-    setTimeout(() => {
-        const updatedVoices = synth.getVoices();
-        if (updatedVoices.length > initialVoices.length) {
-            voices = updatedVoices.filter(v => v.lang.startsWith('ja'));
-        }
+    // Chrome特殊处理：如果语音列表为空，设置事件监听器
+    if (voices.length === 0 && synth.onvoiceschanged !== undefined) {
+        // 添加一次性事件监听器
+        const onVoicesChanged = () => {
+            voices = getAvailableVoices();
+            populateVoiceList();
+            synth.onvoiceschanged = null; // 移除事件监听器
+        };
         
+        synth.onvoiceschanged = onVoicesChanged;
+    } else {
         populateVoiceList();
-    }, 1000);
+    }
 }
 
 function populateVoiceList() {
-    $('#voiceList').html(voices.map(v => 
-        `<option value="${v.voiceURI}">${v.name} (${v.lang})</option>`
-    ));
+    const voiceSelect = $('#voiceList');
+    voiceSelect.empty();
+    
+    voices.forEach(voice => {
+        voiceSelect.append(
+            $('<option></option>').val(voice.voiceURI).text(`${voice.name} (${voice.lang})`)
+        );
+    });
     
     // 加载保存的设置
     $('#voiceType').val(storage.get('voiceType') || 'api');
-    $('#voiceList').val(storage.get('voice') || '');
+    voiceSelect.val(storage.get('voice') || '');
     toggleVoiceSelection();
 }
 
@@ -909,12 +925,8 @@ function toggleVoiceSelection() {
 
 // 事件监听
 $(document).ready(() => {
-    // 初始化语音合成
-    if (synth.onvoiceschanged !== undefined) {
-        synth.onvoiceschanged = initVoices;
-    } else {
-        initVoices();
-    }
+    // 初始化语音合成 - 使用优化后的方法
+    initVoices();
     
     // 设置当前版本显示
     $("#current-version").text(CURRENT_VERSION);
@@ -967,7 +979,7 @@ $(document).ready(() => {
 // 版本更新检查
 function checkVersionUpdate() {
     // 更新检测
-    const versionUrl = "https://raw.githubusercontent.com/pulimoeew/other/refs/heads/main/update.json";
+    const versionUrl = "https://raw.githubusercontent.com/pulimoeew/other/main/update.json";
     
     // 时间戳，避免缓存问题
     const timestamp = new Date().getTime();
