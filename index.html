@@ -267,7 +267,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "3.3";
+const CURRENT_VERSION = "3.4";
 
 // 持久化存储
 const storage = {
@@ -359,8 +359,7 @@ function generateMessageID(data) {
         // ID标识
         return `eew_${data._id}`;
     } else if (data.code === 551) {
-        // 使用地震时间、震源名称和最大震度作为唯一标识
-        return `551_${data.earthquake.time}_${data.earthquake.hypocenter.name}_${data.earthquake.maxScale}`;
+        return `551_${data._id}`;
     }
     return `unknown_${Date.now()}`;
 }
