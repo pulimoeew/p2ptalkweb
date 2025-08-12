@@ -267,7 +267,7 @@
 
 <script>
 // 当前版本号
-const CURRENT_VERSION = "3.4";
+const CURRENT_VERSION = "3.5";
 
 // 持久化存储
 const storage = {
@@ -357,9 +357,9 @@ function initWebSocket() {
 function generateMessageID(data) {
     if (data.code === 556) {
         // ID标识
-        return `eew_${data._id}`;
+        return `eew_${data.id}`;
     } else if (data.code === 551) {
-        return `551_${data._id}`;
+        return `551_${data.id}`;
     }
     return `unknown_${Date.now()}`;
 }
@@ -965,7 +965,7 @@ $(document).ready(() => {
     });
     
     $('#go-to-download').click(() => {
-        window.open('https://github.com/pulimo999/P2PquakeTalk/releases', '_blank');
+        window.open('https://github.com/pulimoeew/P2PquakeTalk/releases', '_blank');
     });
     
     // 加载地区数据
