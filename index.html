@@ -213,7 +213,7 @@
     </style>
 </head>
 <body>
-    <div class="setting">
+<div class="setting">
         <label>朗读方式: 
             <select id="voiceType">
                 <option value="api">BouyomiChan(端口号50080)</option>
@@ -265,10 +265,10 @@
             <button class="update-btn" id="go-to-download">跳转到下载页面</button>
         </div>
     </div>
-
 <script>
+
 // 当前版本号
-const CURRENT_VERSION = "3.6";
+const CURRENT_VERSION = "3.7";
 
 // 持久化存储
 const storage = {
@@ -363,7 +363,11 @@ function processEarthquakeData(data) {
     let text;
     
     if (data.code === 556) {
-        text = templates.EEW(data);
+        if (data.cancelled) {
+            text = "先ほどの緊急地震速報はキャンセルされました。";
+        } else {
+            text = templates.EEW(data);
+        }
     } else if (data.code === 551) {
         const template = templates[data.issue.type] || (d => `未知的情报: ${d.issue.type}`);
         text = template(data);
@@ -509,7 +513,7 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
 
         return `遠地地震情報を受信しました。${formatTime(data.earthquake.time)}ごろ、海外で地震がありました。
 震源地は、${data.earthquake.hypocenter.name}で、震源の深さは${formatDepth(data.earthquake.hypocenter.depth)}、
-地震の規模を示すマグニチュードは${formatMagnitude(data.earthquake.hypocenter.magnitude)}と推定されます。
+地震の规模を示すマグニチュードは${formatMagnitude(data.earthquake.hypocenter.magnitude)}と推定されます。
 ${formatTsunami(data.earthquake.domesticTsunami)}
 また、${formatForeignTsunami(data.earthquake.foreignTsunami)}
 この地震により、観測された最大震度は${formatScale(data.earthquake.maxScale)}です。
@@ -522,12 +526,12 @@ ${formatTsunami(data.earthquake.domesticTsunami)}
          
         let allRegions;
     
-    if (prefs.length > 10) {
-        const largeRegions = convertToLargeRegions(prefs);
-        allRegions = largeRegions.join('、');
-    } else {
-        allRegions = prefs.join('、');
-    }
+        if (prefs.length > 10) {
+            const largeRegions = convertToLargeRegions(prefs);
+            allRegions = largeRegions.join('、');
+        } else {
+            allRegions = prefs.join('、');
+        }
         
         return `緊急地震速報です、${data.earthquake.hypocenter.reduceName}で地震。
 ${allRegions}では、強い揺れに警戒してください。`;
@@ -704,9 +708,8 @@ function speakText(text) {
     const voiceType = $('#voiceType').val();
     
     if (voiceType === 'api') {
-        fetch(`http://localhost:50080/talk?text=${encodeURIComponent(text)}`)
-            .catch(error => console.error('BouyomiChan连接失败:', error));
-    } else if (synth && voices.length > 0) {
+        $.get(`http://localhost:50080/talk?text=${encodeURIComponent(text)}`)
+            } else if (synth && voices.length > 0) {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.voice = voices.find(v => v.voiceURI === $('#voiceList').val());
         synth.speak(utterance);
@@ -726,10 +729,15 @@ function sendNotification(data) {
         : "";
     
     if (data.code === 556) {
-        title = `緊急地震速報 (EEW) ${timeStr}`;
-        body = notificationTemplates.EEW(data);
+        if (data.cancelled) {
+            title = "緊急地震速報キャンセル  (誤報の可能性あり)";
+            body = "先ほどの緊急地震速報はキャンセルされました。";
+        } else {
+            title = `緊急地震速報 (EEW) ${timeStr}`;
+            body = notificationTemplates.EEW(data);
+        }
     } else if (data.code === 551) {
-       switch(data.issue.type) {
+        switch(data.issue.type) {
             case "DetailScale":
                 title = `震源・震度情報 ${timeStr}`;
                 break;
@@ -756,7 +764,7 @@ function sendNotification(data) {
     
     // 设置通知图标
     let iconUrl;
-    const baseIconUrl = "https://raw.githubusercontent.com/pulimo999/other/refs/heads/main/";
+    const baseIconUrl = "https://raw.githubusercontent.com/pulimoeew/other/refs/heads/main/";
     
     if (data.code === 556) {
         iconUrl = baseIconUrl + "不明.png";
@@ -799,7 +807,7 @@ function requestNotificationPermission() {
             // 发送测试通知
             new Notification("P2PquakeTalk", {
                 body: "这只是一个测试~",
-                icon: 'https://raw.githubusercontent.com/pulimo999/other/main/icon.png'
+                icon: 'https://raw.githubusercontent.com/pulimoeew/other/main/icon.png'
             });
         } else {
             notificationPermission = false;
@@ -834,11 +842,7 @@ function toggleVoiceSelection() {
 // 事件监听
 $(document).ready(() => {
     // 初始化语音合成
-    if (synth.onvoiceschanged !== undefined) {
-        synth.onvoiceschanged = initVoices;
-    } else {
-        initVoices();
-    }
+    initVoices();
     
     // 设置当前版本显示
     $("#current-version").text(CURRENT_VERSION);
@@ -920,4 +924,4 @@ function checkVersionUpdate() {
 }
 </script>
 </body>
-</html>                                                                                                                                                               
+</html>
